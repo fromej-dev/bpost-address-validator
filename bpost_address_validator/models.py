@@ -231,19 +231,7 @@ class ValidatedAddressResult(_FlexibleModel):
 # ----
 
 
-class ValidationMessageBase(_FlexibleModel):
-    # Common, frequently observed fields in validation message payloads
-    code: Optional[str] = Field(default=None, alias="Code")
-    severity: Optional[str] = Field(default=None, alias="Severity")
-    impacted_component: Optional[str] = Field(default=None, alias="ImpactedComponent")
-    message: Optional[str] = Field(default=None, alias="Message")
-    description: Optional[str] = Field(default=None, alias="Description")
-    phase: Optional[str] = Field(default=None, alias="Phase")
-    level: Optional[str] = Field(default=None, alias="Level")
-    details: Optional[Dict[str, Any]] = Field(default=None, alias="Details")
-
-
-class ValidationErrorItem(ValidationMessageBase):
+class ValidationErrorItem(_FlexibleModel):
     component_ref: str = Field(alias="ComponentRef")
     error_code: Optional[str] = Field(default=None, alias="ErrorCode")
     error_severity: Optional[str] = Field(default=None, alias="ErrorSeverity")
