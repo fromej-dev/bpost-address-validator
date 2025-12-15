@@ -1,6 +1,12 @@
 ### bpost-address-validator
 
-This is a lightweight Python wrapper for bpost’s External Mailing Address Proofing API endpoint `POST /roa-info-st/externalMailingAddressProofingRest/validateAddresses`.
+This is a lightweight Python wrapper for bpost’s External Mailing Address Proofing API endpoint `POST /<env>/externalMailingAddressProofingRest/validateAddresses`.
+
+Environments have different base URLs and path prefixes. Presets are provided for convenience:
+
+- prod: `https://api.mailops.bpost.cloud/roa-info/...`
+- test (NP): `https://api.mailops-np.bpost.cloud/roa-info-st2/...`
+- uat (NP): `https://api.mailops-np.bpost.cloud/roa-info-ac/...`
 
 It provides:
 - Synchronous and asynchronous clients powered by `httpx`
@@ -12,7 +18,7 @@ It provides:
 - Sync client: `BpostClient`
 - Async client: `AsyncBpostClient`
 - Automatic `x-api-key` header handling
-- Default base URL pointing to bpost NP environment
+- Default base URL pointing to bpost NP environment (you should usually provide a preset explicitly)
 - Uniform error type `ApiError` for transport and non-200 responses
 
 
@@ -81,7 +87,8 @@ req = ValidateAddressesRequest(
     )
 )
 
-with BpostClient(api_key="<YOUR_API_KEY>") as client:
+# Use a preset matching your target environment: "prod", "test", or "uat"
+with BpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
     resp = client.validate_addresses(req)
     print(resp.model_dump())
 ```
@@ -112,12 +119,57 @@ async def main():
             )
         )
     )
-    async with AsyncBpostClient(api_key="<YOUR_API_KEY>") as client:
+    async with AsyncBpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
         resp = await client.validate_addresses(req)
         print(resp.model_dump())
 
 asyncio.run(main())
+
 ```
+
+#### Environment configuration
+
+You can configure the target environment in three ways:
+
+1) Use a preset (recommended):
+
+```python
+# prod
+BpostClient(api_key="...", preset="prod")
+
+# test (NP, st2)
+BpostClient(api_key="...", preset="test")
+
+# uat (NP, ac)
+BpostClient(api_key="...", preset="uat")
+```
+
+2) Manually set base URL and path prefix:
+
+```python
+# Equivalent to preset="prod"
+BpostClient(
+    api_key="...",
+    base_url="https://api.mailops.bpost.cloud",
+    environment="roa-info",
+)
+
+# Equivalent to preset="test"
+BpostClient(
+    api_key="...",
+    base_url="https://api.mailops-np.bpost.cloud",
+    environment="roa-info-st2",
+)
+
+# Equivalent to preset="uat"
+BpostClient(
+    api_key="...",
+    base_url="https://api.mailops-np.bpost.cloud",
+    environment="roa-info-ac",
+)
+```
+
+3) Advanced: Provide your own `httpx` client with custom base URL and headers. In that case, pass `client=` to the constructor and omit `api_key` or headers accordingly.
 
 
 #### Using the typed address models

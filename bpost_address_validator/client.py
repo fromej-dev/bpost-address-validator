@@ -11,7 +11,29 @@ from .models import ValidateAddressesRequest, ValidateAddressesResponse
 DEFAULT_BASE_URL = "https://api.mailops-np.bpost.cloud"
 
 # Supported environment prefixes for the path segment
-Environment = Literal["roa-info", "roa-info-st", "roa-info-ac"]
+# Note: bpost uses different path segments per environment
+# - prod: roa-info
+# - test: roa-info-st2 (not roa-info-st)
+# - uat:  roa-info-ac
+Environment = Literal["roa-info", "roa-info-st", "roa-info-st2", "roa-info-ac"]
+
+# Optional presets that set both base_url (domain) and environment (path prefix)
+EnvironmentPreset = Literal["prod", "test", "uat"]
+
+_PRESET_CONFIG: Dict[EnvironmentPreset, Dict[str, str]] = {
+    "prod": {
+        "base_url": "https://api.mailops.bpost.cloud",
+        "environment": "roa-info",
+    },
+    "test": {
+        "base_url": "https://api.mailops-np.bpost.cloud",
+        "environment": "roa-info-st2",
+    },
+    "uat": {
+        "base_url": "https://api.mailops-np.bpost.cloud",
+        "environment": "roa-info-ac",
+    },
+}
 
 
 def _ensure_request_payload(
@@ -40,9 +62,16 @@ class BpostClient:
         api_key: str,
         base_url: str = DEFAULT_BASE_URL,
         environment: Environment = "roa-info",
+        preset: Optional[EnvironmentPreset] = None,
         timeout: Optional[float] = 30.0,
         client: Optional[httpx.Client] = None,
     ) -> None:
+        # Apply preset if provided; it sets both base_url and environment
+        if preset is not None:
+            cfg = _PRESET_CONFIG[preset]
+            base_url = cfg["base_url"]
+            environment = cfg["environment"]  # type: ignore[assignment]
+
         self._base_url = base_url.rstrip("/")
         self._environment: Environment = environment
         self._timeout = timeout
@@ -104,9 +133,16 @@ class AsyncBpostClient:
         api_key: str,
         base_url: str = DEFAULT_BASE_URL,
         environment: Environment = "roa-info",
+        preset: Optional[EnvironmentPreset] = None,
         timeout: Optional[float] = 30.0,
         client: Optional[httpx.AsyncClient] = None,
     ) -> None:
+        # Apply preset if provided; it sets both base_url and environment
+        if preset is not None:
+            cfg = _PRESET_CONFIG[preset]
+            base_url = cfg["base_url"]
+            environment = cfg["environment"]  # type: ignore[assignment]
+
         self._base_url = base_url.rstrip("/")
         self._environment: Environment = environment
         self._timeout = timeout
