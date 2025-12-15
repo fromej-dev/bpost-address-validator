@@ -216,20 +216,11 @@ class ValidatedAddressResult(_FlexibleModel):
         default=None, alias="MaileeAndAddressee"
     )
     id: Optional[str] = Field(default=None, alias="@id")
-    # Backward-compatible raw blocks (if API returns singletons)
-    error: Optional[Dict[str, Any]] = Field(default=None, alias="Error")
-    warning: Optional[Dict[str, Any]] = Field(default=None, alias="Warning")
+    error: Optional[List[ValidationErrorItem]] = Field(default_factory=list, alias="Error")
     detected_input_address_language: Optional[str] = Field(
         default=None, alias="DetectedInputAddressLanguage"
     )
     transaction_id: Optional[str] = Field(default=None, alias="TransactionID")
-    # Preferred structured lists when present
-    error_list: Optional["ValidationErrorList"] = Field(
-        default=None, alias="ErrorList"
-    )
-    warning_list: Optional["ValidationWarningList"] = Field(
-        default=None, alias="WarningList"
-    )
 
 
 # ----
@@ -253,19 +244,9 @@ class ValidationMessageBase(_FlexibleModel):
 
 
 class ValidationErrorItem(ValidationMessageBase):
-    pass
-
-
-class ValidationWarningItem(ValidationMessageBase):
-    pass
-
-
-class ValidationErrorList(_FlexibleModel):
-    error: List[ValidationErrorItem] = Field(default_factory=list, alias="Error")
-
-
-class ValidationWarningList(_FlexibleModel):
-    warning: List[ValidationWarningItem] = Field(default_factory=list, alias="Warning")
+    component_ref: str = Field(alias="ComponentRef")
+    error_code: Optional[str] = Field(default=None, alias="ErrorCode")
+    error_severity: Optional[str] = Field(default=None, alias="ErrorSeverity")
 
 
 # Rebuild to resolve forward refs for Pydantic v2

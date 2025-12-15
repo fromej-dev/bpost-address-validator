@@ -27,9 +27,6 @@ from .models import (
     ValidateAddressesResponse,
     ValidationMessageBase,
     ValidationErrorItem,
-    ValidationWarningItem,
-    ValidationErrorList,
-    ValidationWarningList,
 )
 from .errors import ApiError
 
@@ -56,8 +53,5 @@ __all__ = [
     "ValidateAddressesResponse",
     "ValidationMessageBase",
     "ValidationErrorItem",
-    "ValidationWarningItem",
-    "ValidationErrorList",
-    "ValidationWarningList",
     "ApiError",
 ]
