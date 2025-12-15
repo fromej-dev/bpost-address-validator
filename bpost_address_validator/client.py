@@ -8,7 +8,7 @@ from .errors import ApiError
 from .models import ValidateAddressesRequest, ValidateAddressesResponse
 
 
-DEFAULT_BASE_URL = "https://api.mailops-np.bpost.cloud"
+DEFAULT_BASE_URL = "https://api.mailops.bpost.cloud"
 
 # Supported environment prefixes for the path segment
 # Note: bpost uses different path segments per environment
