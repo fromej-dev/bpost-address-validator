@@ -28,10 +28,20 @@ from .models import (
     ValidationErrorItem,
 )
 from .errors import ApiError
+from .helpers import (
+    ValidationPresets,
+    create_structured_address,
+    create_unstructured_address,
+    create_address_to_validate,
+    create_simple_request,
+    create_batch_request,
+)
 
 __all__ = [
+    # Clients
     "BpostClient",
     "AsyncBpostClient",
+    # Models
     "AddressToValidate",
     "AddressToValidateList",
     "AddressBlockLines",
@@ -51,5 +61,13 @@ __all__ = [
     "ValidatedAddressResultList",
     "ValidateAddressesResponse",
     "ValidationErrorItem",
+    # Errors
     "ApiError",
+    # Helpers
+    "ValidationPresets",
+    "create_structured_address",
+    "create_unstructured_address",
+    "create_address_to_validate",
+    "create_simple_request",
+    "create_batch_request",
 ]
