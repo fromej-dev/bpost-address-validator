@@ -222,6 +222,60 @@ class ValidatedAddressResult(_FlexibleModel):
     )
     transaction_id: Optional[str] = Field(default=None, alias="TransactionID")
 
+    @property
+    def is_valid(self) -> bool:
+        """Check if the address validation was successful.
+
+        Returns:
+            True if there are validated addresses and no errors, False otherwise
+        """
+        has_results = bool(
+            self.validated_address_list
+            and self.validated_address_list.validated_address
+        )
+        has_errors = bool(self.error)
+        return has_results and not has_errors
+
+    @property
+    def errors(self) -> List[ValidationErrorItem]:
+        """Get the list of validation errors.
+
+        Returns:
+            List of ValidationErrorItem objects (empty list if no errors)
+        """
+        return self.error if self.error else []
+
+    @property
+    def validated_addresses(self) -> List[ValidatedAddress]:
+        """Get the list of validated addresses.
+
+        Returns:
+            List of ValidatedAddress objects (empty list if none)
+        """
+        if self.validated_address_list:
+            return self.validated_address_list.validated_address
+        return []
+
+    @property
+    def first_validated_address(self) -> Optional[ValidatedAddress]:
+        """Get the first validated address.
+
+        Returns:
+            First ValidatedAddress or None if no addresses
+        """
+        addresses = self.validated_addresses
+        return addresses[0] if addresses else None
+
+    @property
+    def score(self) -> Optional[str]:
+        """Get the validation score of the first validated address.
+
+        Returns:
+            Score string or None if no addresses
+        """
+        addr = self.first_validated_address
+        return addr.score if addr else None
+
 
 # ----
 # Validation messages (Errors and Warnings)
@@ -259,3 +313,27 @@ class ValidateAddressesResponse(_FlexibleModel):
     validate_addresses_response: Optional[ValidateAddressesResponseContent] = Field(
         default=None, alias="ValidateAddressesResponse"
     )
+
+    @property
+    def results(self) -> List[ValidatedAddressResult]:
+        """Convenience property to access validated address results.
+
+        Returns:
+            List of ValidatedAddressResult objects (empty list if none)
+        """
+        if (
+            self.validate_addresses_response
+            and self.validate_addresses_response.validated_address_result_list
+        ):
+            return self.validate_addresses_response.validated_address_result_list.validated_address_result
+        return []
+
+    @property
+    def first_result(self) -> Optional[ValidatedAddressResult]:
+        """Convenience property to access the first validated address result.
+
+        Returns:
+            First ValidatedAddressResult or None if no results
+        """
+        results = self.results
+        return results[0] if results else None

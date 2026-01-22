@@ -1,6 +1,6 @@
 ### bpost-address-validator
 
-This is a lightweight Python wrapper for bpost’s External Mailing Address Proofing API endpoint `POST /<env>/externalMailingAddressProofingRest/validateAddresses`.
+This is a lightweight Python wrapper for bpost's External Mailing Address Proofing API endpoint `POST /<env>/externalMailingAddressProofingRest/validateAddresses`.
 
 Environments have different base URLs and path prefixes. Presets are provided for convenience:
 
@@ -12,6 +12,10 @@ It provides:
 - Synchronous and asynchronous clients powered by `httpx`
 - Pydantic v2 models for request/response envelopes (flexible inner structure; extra fields allowed)
 - A simple, typed interface and explicit error handling via `ApiError`
+- **NEW**: Convenience functions for simple address validation without complex model construction
+- **NEW**: Factory functions for easy model creation
+- **NEW**: Validation option presets
+- **NEW**: Response helper properties for easier result access
 
 
 #### Features
@@ -20,6 +24,11 @@ It provides:
 - Automatic `x-api-key` header handling
 - Default base URL pointing to bpost NP environment (you should usually provide a preset explicitly)
 - Uniform error type `ApiError` for transport and non-200 responses
+- Connection pool configuration for high-throughput scenarios
+- Simple convenience methods: `validate_address_simple()`, `validate_addresses_batch()`
+- Factory functions: `create_structured_address()`, `create_simple_request()`, etc.
+- Validation presets: `ValidationPresets.FULL`, `ValidationPresets.WITH_SUGGESTIONS`, etc.
+- Response helpers: `response.results`, `result.is_valid`, `result.score`, etc.
 
 
 #### Requirements
@@ -37,7 +46,126 @@ pip install -e .
 ```
 
 
-#### Quick start (sync)
+#### Quick start (simple API)
+
+The simplest way to validate an address:
+
+```python
+from bpost_address_validator import BpostClient
+
+with BpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
+    # Validate a single address with simple parameters
+    response = client.validate_address_simple(
+        street_name="Muntstraat",
+        street_number="1",
+        postal_code="1000",
+        municipality_name="Bruxelles"
+    )
+
+    # Easy access to results
+    if response.first_result and response.first_result.is_valid:
+        print(f"Valid! Score: {response.first_result.score}")
+    else:
+        print(f"Errors: {response.first_result.errors}")
+```
+
+
+#### Quick start (batch validation)
+
+Validate multiple addresses at once:
+
+```python
+from bpost_address_validator import BpostClient
+
+addresses = [
+    {
+        "street_name": "Muntstraat",
+        "street_number": "1",
+        "postal_code": "1000",
+        "municipality_name": "Bruxelles"
+    },
+    {
+        "address_lines": ["Rue de la Loi 16", "1000 Bruxelles"]
+    }
+]
+
+with BpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
+    response = client.validate_addresses_batch(addresses)
+
+    for result in response.results:
+        print(f"ID: {result.id}, Valid: {result.is_valid}, Score: {result.score}")
+```
+
+
+#### Quick start (with validation presets)
+
+Use predefined validation option presets:
+
+```python
+from bpost_address_validator import BpostClient, ValidationPresets
+
+with BpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
+    response = client.validate_address_simple(
+        street_name="Muntstraat",
+        street_number="1",
+        postal_code="1000",
+        municipality_name="Bruxelles",
+        options=ValidationPresets.FULL  # All validation options enabled
+    )
+    print(response.model_dump())
+```
+
+Available presets:
+- `ValidationPresets.BASIC` - Minimal validation
+- `ValidationPresets.FULL` - All validation options enabled
+- `ValidationPresets.WITH_SUGGESTIONS` - Include address suggestions
+- `ValidationPresets.WITH_FORMATTING` - Include formatting information
+- `ValidationPresets.WITH_GEO` - Include geo-location data
+
+
+#### Quick start (factory functions)
+
+Use factory functions for easy model creation:
+
+```python
+from bpost_address_validator import (
+    BpostClient,
+    create_structured_address,
+    create_address_to_validate,
+    create_simple_request,
+    ValidationPresets,
+)
+
+# Create a structured address
+address = create_structured_address(
+    street_name="Muntstraat",
+    street_number="1",
+    postal_code="1000",
+    municipality_name="Bruxelles"
+)
+
+# Create an address to validate
+addr_to_validate = create_address_to_validate(
+    id="1",
+    street_name="Muntstraat",
+    street_number="1",
+    postal_code="1000",
+    municipality_name="Bruxelles"
+)
+
+# Create a complete request
+request = create_simple_request([addr_to_validate], ValidationPresets.FULL)
+
+with BpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
+    response = client.validate_addresses(request)
+    print(response.model_dump())
+```
+
+
+#### Quick start (traditional sync API)
+
+The traditional way using full model construction:
+
 ```python
 from bpost_address_validator import (
     BpostClient,
@@ -61,7 +189,6 @@ req = ValidateAddressesRequest(
                     id="1",
                     dispatching_country_iso_code="BE",
                     delivering_country_iso_code="BE",
-                    # Provide either address_block_lines or a structured postal_address
                     postal_address=PostalAddress(
                         delivery_point_location=DeliveryPointLocation(
                             structured_delivery_point_location=StructuredDeliveryPointLocation(
@@ -87,7 +214,6 @@ req = ValidateAddressesRequest(
     )
 )
 
-# Use a preset matching your target environment: "prod", "test", or "uat"
 with BpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
     resp = client.validate_addresses(req)
     print(resp.model_dump())
@@ -95,37 +221,30 @@ with BpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
 
 
 #### Quick start (async)
+
+All convenience methods are also available in async:
+
 ```python
 import asyncio
-from bpost_address_validator import (
-    AsyncBpostClient,
-    ValidateAddressesRequest,
-    ValidateAddressesRequestContent,
-    AddressToValidateList,
-    AddressToValidate,
-)
+from bpost_address_validator import AsyncBpostClient, ValidationPresets
 
 async def main():
-    req = ValidateAddressesRequest(
-        validate_addresses_request=ValidateAddressesRequestContent(
-            address_to_validate_list=AddressToValidateList(
-                address_to_validate=[
-                    AddressToValidate(
-                        id="1",
-                        dispatching_country_iso_code="BE",
-                        delivering_country_iso_code="BE",
-                    )
-                ]
-            )
-        )
-    )
     async with AsyncBpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
-        resp = await client.validate_addresses(req)
-        print(resp.model_dump())
+        # Simple validation
+        response = await client.validate_address_simple(
+            street_name="Muntstraat",
+            street_number="1",
+            postal_code="1000",
+            municipality_name="Bruxelles",
+            options=ValidationPresets.WITH_SUGGESTIONS
+        )
+
+        if response.first_result and response.first_result.is_valid:
+            print(f"Valid! Score: {response.first_result.score}")
 
 asyncio.run(main())
-
 ```
+
 
 #### Environment configuration
 
@@ -172,66 +291,65 @@ BpostClient(
 3) Advanced: Provide your own `httpx` client with custom base URL and headers. In that case, pass `client=` to the constructor and omit `api_key` or headers accordingly.
 
 
-#### Using the typed address models
+#### Performance tuning (high-throughput scenarios)
+
+Configure connection pool settings for high-volume usage:
+
 ```python
-from bpost_address_validator import (
-    BpostClient,
-    ValidateAddressesRequest,
-    ValidateAddressesRequestContent,
-    AddressToValidateList,
-    AddressToValidate,
-    ValidateAddressOptions,
-    AddressBlockLines,
-    UnstructuredAddressLineItem,
-    PostalAddress,
-    DeliveryPointLocation,
-    StructuredDeliveryPointLocation,
-    PostalCodeMunicipality,
-    StructuredPostalCodeMunicipality,
-)
+from bpost_address_validator import BpostClient
 
-req = ValidateAddressesRequest(
-    validate_addresses_request=ValidateAddressesRequestContent(
-        address_to_validate_list=AddressToValidateList(
-            address_to_validate=[
-                AddressToValidate(
-                    id="1",
-                    dispatching_country_iso_code="BE",
-                    delivering_country_iso_code="BE",
-                    # Option A: unstructured address lines
-                    address_block_lines=AddressBlockLines(
-                        unstructured_address_line=[
-                            UnstructuredAddressLineItem(body="Muntstraat 1", locale="nl")
-                        ]
-                    ),
-                    # Option B: structured postal address (can be used instead of address_block_lines)
-                    postal_address=PostalAddress(
-                        delivery_point_location=DeliveryPointLocation(
-                            structured_delivery_point_location=StructuredDeliveryPointLocation(
-                                street_name="Muntstraat", street_number="1"
-                            )
-                        ),
-                        postal_code_municipality=PostalCodeMunicipality(
-                            structured_postal_code_municipality=StructuredPostalCodeMunicipality(
-                                postal_code="1000", municipality_name="Bruxelles"
-                            )
-                        ),
-                    ),
-                )
-            ]
-        ),
-        validate_address_options=ValidateAddressOptions(include_formatting=True),
+with BpostClient(
+    api_key="<YOUR_API_KEY>",
+    preset="test",
+    max_connections=200,  # Max total connections (default: 100)
+    max_keepalive_connections=50,  # Max keep-alive connections (default: 20)
+    timeout=60.0,  # Request timeout in seconds (default: 30.0)
+) as client:
+    # Your high-volume validation code here
+    pass
+```
+
+
+#### Using response helper properties
+
+Response and result objects have convenient helper properties:
+
+```python
+from bpost_address_validator import BpostClient
+
+with BpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
+    response = client.validate_address_simple(
+        street_name="Muntstraat",
+        street_number="1",
+        postal_code="1000",
+        municipality_name="Bruxelles"
     )
-)
 
-with BpostClient(api_key="<YOUR_API_KEY>") as client:
-    resp = client.validate_addresses(req)
-    # Access typed response envelope
-    print(resp.validate_addresses_response is not None)
+    # Access results easily
+    print(f"Total results: {len(response.results)}")
+
+    # Get first result
+    result = response.first_result
+    if result:
+        # Check validity
+        print(f"Is valid: {result.is_valid}")
+
+        # Get score
+        print(f"Score: {result.score}")
+
+        # Get errors
+        print(f"Errors: {result.errors}")
+
+        # Get validated addresses
+        for addr in result.validated_addresses:
+            print(f"Address: {addr.postal_address}")
 ```
 
 
 #### Passing a raw dict payload
+
+You can still use raw dict payloads if needed:
+
 ```python
 from bpost_address_validator import BpostClient
 
@@ -264,32 +382,56 @@ payload = {
     }
 }
 
-with BpostClient(api_key="<YOUR_API_KEY>") as client:
+with BpostClient(api_key="<YOUR_API_KEY>", preset="test") as client:
     resp = client.validate_addresses(payload)
     print(resp.validate_addresses_response is not None)
 ```
 
 
 #### API overview
-- Clients
-  - `BpostClient(api_key: str, base_url: str = DEFAULT, timeout: float | None = 30.0)`
-    - `validate_addresses(payload) -> ValidateAddressesResponse`
-  - `AsyncBpostClient(api_key: str, base_url: str = DEFAULT, timeout: float | None = 30.0)`
-    - `await validate_addresses(payload) -> ValidateAddressesResponse`
 
-- Models (selected)
-  - `ValidateAddressesRequest`
-  - `ValidateAddressesRequestContent`
-  - `AddressToValidateList`
-  - `AddressToValidate`
-  - `AddressBlockLines`, `UnstructuredAddressLineItem`
-  - `PostalAddress`, `DeliveryPointLocation`, `StructuredDeliveryPointLocation`
-  - `PostalCodeMunicipality`, `StructuredPostalCodeMunicipality`
-  - `ValidateAddressOptions`
-  - `ValidateAddressesResponse`
+**Clients:**
+- `BpostClient(api_key, preset="test", timeout=30.0, max_connections=100, max_keepalive_connections=20)`
+  - `validate_addresses(payload)` → ValidateAddressesResponse
+  - `validate_address_simple(...)` → ValidateAddressesResponse
+  - `validate_addresses_batch(addresses, ...)` → ValidateAddressesResponse
+- `AsyncBpostClient(...)` - Same methods but async
 
-- Errors
-  - `ApiError` — for transport errors and non-200 responses. Inspect `status_code` and `details` for context.
+**Convenience Functions:**
+- `create_structured_address(street_name, street_number, postal_code, municipality_name, ...)`
+- `create_unstructured_address(address_lines, locale="nl")`
+- `create_address_to_validate(id, street_name, ..., OR address_lines, ...)`
+- `create_simple_request(addresses, options=None)`
+- `create_batch_request(addresses, dispatching_country="BE", ...)`
+
+**Validation Presets:**
+- `ValidationPresets.BASIC` - Minimal validation
+- `ValidationPresets.FULL` - All options enabled
+- `ValidationPresets.WITH_SUGGESTIONS` - Include suggestions
+- `ValidationPresets.WITH_FORMATTING` - Include formatting
+- `ValidationPresets.WITH_GEO` - Include geo-location
+
+**Response Helpers:**
+- `ValidateAddressesResponse.results` - List of all results
+- `ValidateAddressesResponse.first_result` - First result (or None)
+- `ValidatedAddressResult.is_valid` - Boolean validity check
+- `ValidatedAddressResult.errors` - List of errors
+- `ValidatedAddressResult.validated_addresses` - List of validated addresses
+- `ValidatedAddressResult.score` - Validation score
+
+**Models (selected):**
+- `ValidateAddressesRequest`
+- `ValidateAddressesRequestContent`
+- `AddressToValidateList`
+- `AddressToValidate`
+- `AddressBlockLines`, `UnstructuredAddressLineItem`
+- `PostalAddress`, `DeliveryPointLocation`, `StructuredDeliveryPointLocation`
+- `PostalCodeMunicipality`, `StructuredPostalCodeMunicipality`
+- `ValidateAddressOptions`
+- `ValidateAddressesResponse`
+
+**Errors:**
+- `ApiError` — for transport errors and non-200 responses. Inspect `status_code` and `details` for context.
 
 
 #### Request/Response envelopes
@@ -297,12 +439,6 @@ with BpostClient(api_key="<YOUR_API_KEY>") as client:
 - Response body root: `{"ValidateAddressesResponse": {...}}`
 
 Models allow extra fields to preserve forward-compatibility with upstream changes. See `externalMailaddressProofingAPI-OpenAPIspec_v3.yaml` for the full schema reference.
-
-
-#### Environments and base URL
-- Default base URL (NP): `https://api.mailops-np.bpost.cloud`
-- Endpoint path: `/roa-info-st/externalMailingAddressProofingRest/validateAddresses`
-You can override the base URL in the client constructor.
 
 
 #### Error handling
@@ -314,7 +450,7 @@ Example:
 from bpost_address_validator import BpostClient, ApiError
 
 try:
-    with BpostClient(api_key="bad-key") as client:
+    with BpostClient(api_key="bad-key", preset="test") as client:
         client.validate_addresses({"ValidateAddressesRequest": {}})
 except ApiError as e:
     print(e.status_code, e.details)
@@ -327,7 +463,7 @@ Provide your API key via the `api_key` parameter. It is sent as `x-api-key` auto
 
 #### Typing strategy
 - Pydantic v2 models are used for the outer envelopes and key nested structures.
-- Public attributes are Pythonic snake_case; JSON aliases match the API (e.g., `dispatching_country_iso_code` -> `DispatchingCountryISOCode`).
+- Public attributes are Pythonic snake_case; JSON aliases match the API (e.g., `dispatching_country_iso_code` → `DispatchingCountryISOCode`).
 - Typed models are provided for `address_block_lines` and `postal_address` structures (including delivery point location and postal code/municipality).
 - Extra keys are allowed across models to avoid breakage if bpost adds new fields.
 - For attributes like `"@id"`, the models expose proper field aliases (e.g., `Field(alias="@id")`).
@@ -344,4 +480,4 @@ MIT — see `LICENSE` if provided, otherwise follow repository policy.
 
 
 #### Disclaimer
-This project is not affiliated with or endorsed by bpost. Use at your own risk and comply with bpost’s terms.
+This project is not affiliated with or endorsed by bpost. Use at your own risk and comply with bpost's terms.
