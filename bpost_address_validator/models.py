@@ -185,6 +185,78 @@ class ValidateAddressesRequest(_FlexibleModel):
 # Response models (kept flexible, but with helpful typed anchors)
 
 
+# -- Geo-location models --
+
+class GeoCoordinate(_FlexibleModel):
+    value: Optional[str] = Field(default=None, alias="Value")
+    coordinate_type: Optional[str] = Field(default=None, alias="CoordinateType")
+
+
+class GeographicalLocation(_FlexibleModel):
+    latitude: Optional[GeoCoordinate] = Field(default=None, alias="Latitude")
+    longitude: Optional[GeoCoordinate] = Field(default=None, alias="Longitude")
+
+
+class GeographicalLocationInfo(_FlexibleModel):
+    geographical_location: Optional[GeographicalLocation] = Field(
+        default=None, alias="GeographicalLocation"
+    )
+
+
+class ServicePointDetailInfo(_FlexibleModel):
+    geographical_location_info: Optional[GeographicalLocationInfo] = Field(
+        default=None, alias="GeographicalLocationInfo"
+    )
+
+
+# -- NIS models --
+
+class NisCodeInfo(_FlexibleModel):
+    level: Optional[str] = Field(default=None, alias="Level")
+    value: Optional[str] = Field(default=None, alias="Value")
+
+
+class NisNameItem(_FlexibleModel):
+    body: Optional[str] = Field(default=None)
+    locale: Optional[str] = Field(default=None)
+
+
+class NisHierarchyResultItem(_FlexibleModel):
+    nis_code: Optional[NisCodeInfo] = Field(default=None, alias="NisCode")
+    nis_name: List[NisNameItem] = Field(default_factory=list, alias="NisName")
+
+
+class NisHierarchyInfo(_FlexibleModel):
+    nis_hierarchy_result: List[NisHierarchyResultItem] = Field(
+        default_factory=list, alias="NisHierarchyResult"
+    )
+
+
+# -- Service point result models --
+
+class ServicePointResultItem(_FlexibleModel):
+    box_number: Optional[str] = Field(default=None, alias="BoxNumber")
+    detail_number: Optional[str] = Field(default=None, alias="DetailNumber")
+
+
+class ServicePointBoxListInfo(_FlexibleModel):
+    service_point_box_result: List[ServicePointResultItem] = Field(
+        default_factory=list, alias="ServicePointBoxResult"
+    )
+
+
+class ServicePointSuffixListInfo(_FlexibleModel):
+    service_point_suffix_result: List[ServicePointResultItem] = Field(
+        default_factory=list, alias="ServicePointSuffixResult"
+    )
+
+
+# -- Formatted address (label / submitted address) --
+
+class FormattedAddress(_FlexibleModel):
+    line: List[str] = Field(default_factory=list, alias="Line")
+
+
 class ValidatedAddress(_FlexibleModel):
     postal_address: Optional[PostalAddress] = Field(default=None, alias="PostalAddress")
     address_language: Optional[str] = Field(default=None, alias="AddressLanguage")
@@ -192,14 +264,17 @@ class ValidatedAddress(_FlexibleModel):
     number_of_suffix: Optional[str] = Field(default=None, alias="NumberOfSuffix")
     number_of_boxes: Optional[str] = Field(default=None, alias="NumberOfBoxes")
     label: Optional[Dict[str, Any]] = Field(default=None, alias="Label")
-    service_point_box_list: Optional[Dict[str, Any]] = Field(
+    service_point_box_list: Optional[ServicePointBoxListInfo] = Field(
         default=None, alias="ServicePointBoxList"
     )
-    service_point_detail: Optional[Dict[str, Any]] = Field(
+    service_point_detail: Optional[ServicePointDetailInfo] = Field(
         default=None, alias="ServicePointDetail"
     )
-    nis_code: Optional[Dict[str, Any]] = Field(default=None, alias="NisCode")
-    nis_hierarchy: Optional[Dict[str, Any]] = Field(default=None, alias="NisHierarchy")
+    service_point_suffix_list: Optional[ServicePointSuffixListInfo] = Field(
+        default=None, alias="ServicePointSuffixList"
+    )
+    nis_code: Optional[NisCodeInfo] = Field(default=None, alias="NisCode")
+    nis_hierarchy: Optional[NisHierarchyInfo] = Field(default=None, alias="NisHierarchy")
 
 
 class ValidatedAddressList(_FlexibleModel):
@@ -221,6 +296,9 @@ class ValidatedAddressResult(_FlexibleModel):
         default=None, alias="DetectedInputAddressLanguage"
     )
     transaction_id: Optional[str] = Field(default=None, alias="TransactionID")
+    formatted_submitted_address: Optional[FormattedAddress] = Field(
+        default=None, alias="FormattedSubmittedAddress"
+    )
 
     @property
     def is_valid(self) -> bool:

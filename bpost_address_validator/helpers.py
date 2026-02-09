@@ -20,6 +20,7 @@ from .models import (
     ValidatedAddress,
     ValidatedAddressResult,
     ValidateAddressesResponse,
+    ServicePointResultItem,
 )
 
 
@@ -497,3 +498,205 @@ def extract_all_results(
         return []
 
     return [extract_from_result(r) for r in response.results]
+
+
+def extract_geo_location(
+    validated_address: Optional[ValidatedAddress],
+) -> Dict[str, Optional[str]]:
+    """Extract geo-location coordinates from a ValidatedAddress.
+
+    Available when ``include_default_geo_location`` was enabled during
+    validation.
+
+    Args:
+        validated_address: A ValidatedAddress that may contain geo data
+
+    Returns:
+        Dictionary with ``latitude`` and ``longitude`` as strings, or
+        ``None`` if unavailable.
+
+    Example:
+        >>> addr = result.first_result.first_validated_address
+        >>> geo = extract_geo_location(addr)
+        >>> geo["latitude"], geo["longitude"]
+        ('51.207968', '4.227349')
+    """
+    empty: Dict[str, Optional[str]] = {"latitude": None, "longitude": None}
+
+    if validated_address is None or validated_address.service_point_detail is None:
+        return empty
+
+    geo_info = validated_address.service_point_detail.geographical_location_info
+    if geo_info is None or geo_info.geographical_location is None:
+        return empty
+
+    geo = geo_info.geographical_location
+    return {
+        "latitude": geo.latitude.value if geo.latitude else None,
+        "longitude": geo.longitude.value if geo.longitude else None,
+    }
+
+
+def extract_nis_code(
+    validated_address: Optional[ValidatedAddress],
+) -> Dict[str, Optional[str]]:
+    """Extract the NIS code from a ValidatedAddress.
+
+    Available when ``include_nis_code`` was enabled during validation.
+
+    Args:
+        validated_address: A ValidatedAddress that may contain NIS data
+
+    Returns:
+        Dictionary with ``level`` and ``value``, or ``None`` values if
+        unavailable.
+
+    Example:
+        >>> addr = result.first_result.first_validated_address
+        >>> nis = extract_nis_code(addr)
+        >>> nis["level"], nis["value"]
+        ('9', '46003A242')
+    """
+    if validated_address is None or validated_address.nis_code is None:
+        return {"level": None, "value": None}
+
+    return {
+        "level": validated_address.nis_code.level,
+        "value": validated_address.nis_code.value,
+    }
+
+
+def extract_nis_hierarchy(
+    validated_address: Optional[ValidatedAddress],
+) -> List[Dict[str, Any]]:
+    """Extract the NIS hierarchy from a ValidatedAddress.
+
+    Available when ``include_nis_hierarchy`` was enabled during validation.
+    Returns levels from most specific (e.g. neighborhood) to broadest
+    (e.g. region), as ordered by the API.
+
+    Args:
+        validated_address: A ValidatedAddress that may contain NIS hierarchy
+
+    Returns:
+        List of dictionaries, each with ``level``, ``value``, and ``names``
+        (a list of ``{"body": ..., "locale": ...}`` items).
+
+    Example:
+        >>> addr = result.first_result.first_validated_address
+        >>> for entry in extract_nis_hierarchy(addr):
+        ...     print(entry["level"], entry["value"], entry["names"])
+        9 46003A242 [{'body': 'HEIDE', 'locale': 'nl'}]
+        6 46003A [{'body': 'BEVEREN', 'locale': 'nl'}]
+    """
+    if (
+        validated_address is None
+        or validated_address.nis_hierarchy is None
+        or not validated_address.nis_hierarchy.nis_hierarchy_result
+    ):
+        return []
+
+    entries: List[Dict[str, Any]] = []
+    for item in validated_address.nis_hierarchy.nis_hierarchy_result:
+        entry: Dict[str, Any] = {
+            "level": item.nis_code.level if item.nis_code else None,
+            "value": item.nis_code.value if item.nis_code else None,
+            "names": [
+                {"body": n.body, "locale": n.locale}
+                for n in item.nis_name
+            ],
+        }
+        entries.append(entry)
+
+    return entries
+
+
+def _extract_service_point_identifiers(
+    items: List[ServicePointResultItem],
+) -> List[str]:
+    """Return box_number or detail_number from a list of result items."""
+    result: List[str] = []
+    for item in items:
+        identifier = item.box_number or item.detail_number
+        if identifier is not None:
+            result.append(identifier)
+    return result
+
+
+def extract_box_list(
+    validated_address: Optional[ValidatedAddress],
+) -> List[str]:
+    """Extract the list of box numbers from a ValidatedAddress.
+
+    Available when ``include_list_of_boxes`` was enabled during validation.
+
+    Args:
+        validated_address: A ValidatedAddress that may contain box data
+
+    Returns:
+        List of box number strings, or an empty list if unavailable.
+
+    Example:
+        >>> addr = result.first_result.first_validated_address
+        >>> extract_box_list(addr)
+        ['1', '2', '6', '4', '5', '3']
+    """
+    if validated_address is None or validated_address.service_point_box_list is None:
+        return []
+
+    return _extract_service_point_identifiers(
+        validated_address.service_point_box_list.service_point_box_result
+    )
+
+
+def extract_suffix_list(
+    validated_address: Optional[ValidatedAddress],
+) -> List[str]:
+    """Extract the list of suffix numbers from a ValidatedAddress.
+
+    Available when ``include_suffix_list`` was enabled during validation.
+
+    Args:
+        validated_address: A ValidatedAddress that may contain suffix data
+
+    Returns:
+        List of suffix/detail number strings, or an empty list if unavailable.
+
+    Example:
+        >>> addr = result.first_result.first_validated_address
+        >>> extract_suffix_list(addr)
+        ['21', '27', '33', '37', '39']
+    """
+    if validated_address is None or validated_address.service_point_suffix_list is None:
+        return []
+
+    return _extract_service_point_identifiers(
+        validated_address.service_point_suffix_list.service_point_suffix_result
+    )
+
+
+def extract_submitted_address_lines(
+    result: Optional[ValidatedAddressResult],
+) -> List[str]:
+    """Extract formatted submitted address lines from a ValidatedAddressResult.
+
+    Available when ``include_submitted_address`` was enabled during validation.
+    This returns the original submitted address as formatted by bpost, which
+    may differ from the validated/corrected address.
+
+    Args:
+        result: A ValidatedAddressResult from the API response
+
+    Returns:
+        List of formatted submitted address line strings, or an empty list
+        if unavailable.
+
+    Example:
+        >>> info = response.first_result
+        >>> extract_submitted_address_lines(info)
+        ['BOERENSTRAAT 1', '9120 BEVEREN']
+    """
+    if result is None or result.formatted_submitted_address is None:
+        return []
+
+    return result.formatted_submitted_address.line
