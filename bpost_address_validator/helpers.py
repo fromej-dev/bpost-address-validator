@@ -17,6 +17,9 @@ from .models import (
     ValidateAddressesRequest,
     ValidateAddressesRequestContent,
     ValidateAddressOptions,
+    ValidatedAddress,
+    ValidatedAddressResult,
+    ValidateAddressesResponse,
 )
 
 
@@ -294,3 +297,203 @@ def create_batch_request(
         )
 
     return create_simple_request(address_list, options)
+
+
+# ---------------------------------------------------------------------------
+# Extraction helpers: validated response → flat address fields
+# ---------------------------------------------------------------------------
+
+
+def extract_address_fields(postal_address: Optional[PostalAddress]) -> Dict[str, Optional[str]]:
+    """Extract flat address fields from a PostalAddress.
+
+    Handles both response-style (flattened) and request-style (nested)
+    PostalAddress structures, preferring the flattened fields when available.
+
+    Args:
+        postal_address: A PostalAddress from a validated result or request
+
+    Returns:
+        Dictionary with keys matching the ``create_structured_address`` parameters:
+        ``street_name``, ``street_number``, ``box_number``, ``postal_code``,
+        ``municipality_name``, ``country_name``, ``delivery_service_qualifier``.
+        Missing values are ``None``.
+
+    Example:
+        >>> result = client.validate_address_simple(...)
+        >>> addr = result.first_result.first_validated_address
+        >>> fields = extract_address_fields(addr.postal_address)
+        >>> fields["street_name"]
+        'Muntstraat'
+    """
+    fields: Dict[str, Optional[str]] = {
+        "street_name": None,
+        "street_number": None,
+        "box_number": None,
+        "postal_code": None,
+        "municipality_name": None,
+        "country_name": None,
+        "delivery_service_qualifier": None,
+    }
+
+    if postal_address is None:
+        return fields
+
+    # Resolve the structured delivery point — prefer the response-style
+    # flattened field, fall back to the nested request-style wrapper.
+    sdpl = postal_address.structured_delivery_point_location
+    if sdpl is None and postal_address.delivery_point_location is not None:
+        sdpl = postal_address.delivery_point_location.structured_delivery_point_location
+
+    if sdpl is not None:
+        fields["street_name"] = sdpl.street_name
+        fields["street_number"] = sdpl.street_number
+        fields["box_number"] = sdpl.box_number
+        fields["country_name"] = sdpl.country_name
+
+    # Top-level country_name on PostalAddress takes precedence if set.
+    if postal_address.country_name is not None:
+        fields["country_name"] = postal_address.country_name
+
+    # Resolve postal code / municipality.
+    spcm = postal_address.structured_postal_code_municipality
+    if spcm is None and postal_address.postal_code_municipality is not None:
+        spcm = postal_address.postal_code_municipality.structured_postal_code_municipality
+
+    if spcm is not None:
+        fields["postal_code"] = spcm.postal_code
+        fields["municipality_name"] = spcm.municipality_name
+        fields["delivery_service_qualifier"] = spcm.delivery_service_qualifier
+
+    return fields
+
+
+def extract_from_validated_address(
+    validated_address: Optional[ValidatedAddress],
+) -> Dict[str, Optional[str]]:
+    """Extract flat address fields from a ValidatedAddress.
+
+    Returns the same keys as ``extract_address_fields`` plus ``score`` and
+    ``address_language``.
+
+    Args:
+        validated_address: A ValidatedAddress from a validation result
+
+    Returns:
+        Dictionary with address fields, ``score``, and ``address_language``.
+
+    Example:
+        >>> addr = result.first_result.first_validated_address
+        >>> info = extract_from_validated_address(addr)
+        >>> info["postal_code"], info["score"]
+        ('1000', 'perfect')
+    """
+    if validated_address is None:
+        fields = extract_address_fields(None)
+        fields["score"] = None
+        fields["address_language"] = None
+        return fields
+
+    fields = extract_address_fields(validated_address.postal_address)
+    fields["score"] = validated_address.score
+    fields["address_language"] = validated_address.address_language
+    return fields
+
+
+def extract_from_result(
+    result: Optional[ValidatedAddressResult],
+) -> Dict[str, Optional[str]]:
+    """Extract flat address fields from a ValidatedAddressResult.
+
+    Uses the first (best-scoring) validated address. Returns the same keys
+    as ``extract_from_validated_address`` plus ``id``.
+
+    Args:
+        result: A ValidatedAddressResult from the API response
+
+    Returns:
+        Dictionary with address fields, ``score``, ``address_language``,
+        and ``id``.
+
+    Example:
+        >>> response = client.validate_address_simple(...)
+        >>> info = extract_from_result(response.first_result)
+        >>> info["street_name"], info["id"]
+        ('Muntstraat', '1')
+    """
+    if result is None:
+        fields = extract_from_validated_address(None)
+        fields["id"] = None
+        return fields
+
+    fields = extract_from_validated_address(result.first_validated_address)
+    fields["id"] = result.id
+    return fields
+
+
+def extract_label_lines(validated_address: Optional[ValidatedAddress]) -> List[str]:
+    """Extract formatted label lines from a ValidatedAddress.
+
+    The label is available when the ``include_formatting`` option was enabled
+    during validation.
+
+    Args:
+        validated_address: A ValidatedAddress that may contain label data
+
+    Returns:
+        List of formatted address line strings, or an empty list if no
+        label data is available.
+
+    Example:
+        >>> addr = result.first_result.first_validated_address
+        >>> for line in extract_label_lines(addr):
+        ...     print(line)
+        'Muntstraat 1'
+        '1000 BRUSSEL'
+    """
+    if validated_address is None or validated_address.label is None:
+        return []
+
+    label = validated_address.label
+    line_data = label.get("Line", [])
+
+    # The label Line field can be a single dict or a list of dicts,
+    # each containing a "*body" key with the text.
+    if isinstance(line_data, dict):
+        line_data = [line_data]
+
+    lines: List[str] = []
+    for item in line_data:
+        if isinstance(item, dict):
+            text = item.get("*body", "")
+            if text:
+                lines.append(text)
+        elif isinstance(item, str):
+            lines.append(item)
+
+    return lines
+
+
+def extract_all_results(
+    response: Optional[ValidateAddressesResponse],
+) -> List[Dict[str, Optional[str]]]:
+    """Extract flat address fields from every result in a response.
+
+    Convenience wrapper around ``extract_from_result`` for batch responses.
+
+    Args:
+        response: The full ValidateAddressesResponse from the API
+
+    Returns:
+        List of dictionaries, one per result, with the same keys as
+        ``extract_from_result``.
+
+    Example:
+        >>> response = client.validate_addresses(batch_request)
+        >>> for addr in extract_all_results(response):
+        ...     print(addr["postal_code"], addr["street_name"])
+    """
+    if response is None:
+        return []
+
+    return [extract_from_result(r) for r in response.results]

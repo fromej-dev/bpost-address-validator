@@ -35,6 +35,11 @@ from .helpers import (
     create_address_to_validate,
     create_simple_request,
     create_batch_request,
+    extract_address_fields,
+    extract_from_validated_address,
+    extract_from_result,
+    extract_label_lines,
+    extract_all_results,
 )
 
 __all__ = [
@@ -70,4 +75,9 @@ __all__ = [
     "create_address_to_validate",
     "create_simple_request",
     "create_batch_request",
+    "extract_address_fields",
+    "extract_from_validated_address",
+    "extract_from_result",
+    "extract_label_lines",
+    "extract_all_results",
 ]
