@@ -444,6 +444,8 @@ class ValidatedAddressFields(AddressFields):
 
     score: Optional[str] = None
     address_language: Optional[str] = None
+    number_of_boxes: Optional[str] = None
+    number_of_suffix: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -451,6 +453,12 @@ class AddressResultFields(ValidatedAddressFields):
     """Address fields from a ValidatedAddressResult (includes id)."""
 
     id: Optional[str] = None
+    is_valid: bool = False
+    errors: tuple[ValidationErrorItem, ...] = ()
+    transaction_id: Optional[str] = None
+    detected_input_address_language: Optional[str] = None
+    label_lines: tuple[str, ...] = ()
+    submitted_address_lines: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -476,3 +484,11 @@ class NisHierarchyEntry:
     level: Optional[str] = None
     value: Optional[str] = None
     names: tuple[LocalizedName, ...] = ()
+
+
+@dataclass(frozen=True)
+class ServicePointNumbers:
+    """Box numbers and detail numbers extracted from a service point list."""
+
+    box_numbers: tuple[str, ...] = ()
+    detail_numbers: tuple[str, ...] = ()

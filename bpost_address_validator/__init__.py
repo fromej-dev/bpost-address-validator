@@ -45,6 +45,7 @@ from .models import (
     GeoLocation,
     LocalizedName,
     NisHierarchyEntry,
+    ServicePointNumbers,
 )
 from .errors import ApiError
 from .helpers import (
@@ -111,6 +112,7 @@ __all__ = [
     "GeoLocation",
     "LocalizedName",
     "NisHierarchyEntry",
+    "ServicePointNumbers",
     # Errors
     "ApiError",
     # Helpers

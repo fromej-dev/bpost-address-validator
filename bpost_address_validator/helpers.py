@@ -22,12 +22,14 @@ from .models import (
     ValidateAddressesResponse,
     ServicePointResultItem,
     NisCodeInfo,
+    ValidationErrorItem,
     AddressFields,
     ValidatedAddressFields,
     AddressResultFields,
     GeoLocation,
     LocalizedName,
     NisHierarchyEntry,
+    ServicePointNumbers,
 )
 
 
@@ -385,8 +387,8 @@ def extract_from_validated_address(
 ) -> ValidatedAddressFields:
     """Extract flat address fields from a ValidatedAddress.
 
-    Returns the same attributes as ``AddressFields`` plus ``score`` and
-    ``address_language``.
+    Returns the same attributes as ``AddressFields`` plus ``score``,
+    ``address_language``, ``number_of_boxes``, and ``number_of_suffix``.
 
     Args:
         validated_address: A ValidatedAddress from a validation result
@@ -397,8 +399,8 @@ def extract_from_validated_address(
     Example:
         >>> addr = result.first_result.first_validated_address
         >>> info = extract_from_validated_address(addr)
-        >>> info.postal_code, info.score
-        ('1000', 'perfect')
+        >>> info.postal_code, info.number_of_boxes
+        ('1000', '6')
     """
     if validated_address is None:
         return ValidatedAddressFields()
@@ -414,6 +416,8 @@ def extract_from_validated_address(
         delivery_service_qualifier=base.delivery_service_qualifier,
         score=validated_address.score,
         address_language=validated_address.address_language,
+        number_of_boxes=validated_address.number_of_boxes,
+        number_of_suffix=validated_address.number_of_suffix,
     )
 
 
@@ -423,24 +427,32 @@ def extract_from_result(
     """Extract flat address fields from a ValidatedAddressResult.
 
     Uses the first (best-scoring) validated address. Returns the same
-    attributes as ``ValidatedAddressFields`` plus ``id``.
+    attributes as ``ValidatedAddressFields`` plus ``id``, ``is_valid``,
+    ``errors``, ``transaction_id``, ``detected_input_address_language``,
+    ``label_lines``, and ``submitted_address_lines``.
 
     Args:
         result: A ValidatedAddressResult from the API response
 
     Returns:
-        AddressResultFields with address data, validation metadata, and id.
+        AddressResultFields with address data, validation metadata, and
+        result-level attributes.
 
     Example:
         >>> response = client.validate_address_simple(...)
         >>> info = extract_from_result(response.first_result)
-        >>> info.street_name, info.id
-        ('Muntstraat', '1')
+        >>> info.street_name, info.is_valid
+        ('Muntstraat', True)
     """
     if result is None:
         return AddressResultFields()
 
     base = extract_from_validated_address(result.first_validated_address)
+
+    submitted: tuple[str, ...] = ()
+    if result.formatted_submitted_address is not None:
+        submitted = tuple(result.formatted_submitted_address.line)
+
     return AddressResultFields(
         street_name=base.street_name,
         street_number=base.street_number,
@@ -451,7 +463,15 @@ def extract_from_result(
         delivery_service_qualifier=base.delivery_service_qualifier,
         score=base.score,
         address_language=base.address_language,
+        number_of_boxes=base.number_of_boxes,
+        number_of_suffix=base.number_of_suffix,
         id=result.id,
+        is_valid=result.is_valid,
+        errors=tuple(result.errors),
+        transaction_id=result.transaction_id,
+        detected_input_address_language=result.detected_input_address_language,
+        label_lines=tuple(extract_label_lines(result.first_validated_address)),
+        submitted_address_lines=submitted,
     )
 
 
@@ -627,66 +647,83 @@ def extract_nis_hierarchy(
     return entries
 
 
-def _extract_service_point_identifiers(
+def _extract_service_point_numbers(
     items: List[ServicePointResultItem],
-) -> List[str]:
-    """Return box_number or detail_number from a list of result items."""
-    result: List[str] = []
+) -> ServicePointNumbers:
+    """Split box_number and detail_number from a list of result items."""
+    box_numbers: List[str] = []
+    detail_numbers: List[str] = []
     for item in items:
-        identifier = item.box_number or item.detail_number
-        if identifier is not None:
-            result.append(identifier)
-    return result
+        if item.box_number is not None:
+            box_numbers.append(item.box_number)
+        if item.detail_number is not None:
+            detail_numbers.append(item.detail_number)
+    return ServicePointNumbers(
+        box_numbers=tuple(box_numbers),
+        detail_numbers=tuple(detail_numbers),
+    )
 
 
 def extract_box_list(
     validated_address: Optional[ValidatedAddress],
-) -> List[str]:
-    """Extract the list of box numbers from a ValidatedAddress.
+) -> ServicePointNumbers:
+    """Extract box and detail numbers from the box list of a ValidatedAddress.
 
     Available when ``include_list_of_boxes`` was enabled during validation.
+    The API returns either ``BoxNumber`` or ``DetailNumber`` per item
+    depending on the address type; this helper separates them.
 
     Args:
         validated_address: A ValidatedAddress that may contain box data
 
     Returns:
-        List of box number strings, or an empty list if unavailable.
+        ServicePointNumbers with ``box_numbers`` and ``detail_numbers``
+        as separate tuples.
 
     Example:
         >>> addr = result.first_result.first_validated_address
-        >>> extract_box_list(addr)
-        ['1', '2', '6', '4', '5', '3']
+        >>> nums = extract_box_list(addr)
+        >>> nums.box_numbers
+        ('1', '2', '6', '4', '5', '3')
+        >>> nums.detail_numbers
+        ()
     """
     if validated_address is None or validated_address.service_point_box_list is None:
-        return []
+        return ServicePointNumbers()
 
-    return _extract_service_point_identifiers(
+    return _extract_service_point_numbers(
         validated_address.service_point_box_list.service_point_box_result
     )
 
 
 def extract_suffix_list(
     validated_address: Optional[ValidatedAddress],
-) -> List[str]:
-    """Extract the list of suffix numbers from a ValidatedAddress.
+) -> ServicePointNumbers:
+    """Extract box and detail numbers from the suffix list of a ValidatedAddress.
 
     Available when ``include_suffix_list`` was enabled during validation.
+    The API returns either ``BoxNumber`` or ``DetailNumber`` per item
+    depending on the address type; this helper separates them.
 
     Args:
         validated_address: A ValidatedAddress that may contain suffix data
 
     Returns:
-        List of suffix/detail number strings, or an empty list if unavailable.
+        ServicePointNumbers with ``box_numbers`` and ``detail_numbers``
+        as separate tuples.
 
     Example:
         >>> addr = result.first_result.first_validated_address
-        >>> extract_suffix_list(addr)
-        ['21', '27', '33', '37', '39']
+        >>> nums = extract_suffix_list(addr)
+        >>> nums.detail_numbers
+        ('21', '27', '33', '37', '39')
+        >>> nums.box_numbers
+        ()
     """
     if validated_address is None or validated_address.service_point_suffix_list is None:
-        return []
+        return ServicePointNumbers()
 
-    return _extract_service_point_identifiers(
+    return _extract_service_point_numbers(
         validated_address.service_point_suffix_list.service_point_suffix_result
     )
 
