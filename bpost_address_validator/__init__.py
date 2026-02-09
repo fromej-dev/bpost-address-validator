@@ -39,6 +39,12 @@ from .models import (
     ValidatedAddressResultList,
     ValidateAddressesResponse,
     ValidationErrorItem,
+    AddressFields,
+    ValidatedAddressFields,
+    AddressResultFields,
+    GeoLocation,
+    LocalizedName,
+    NisHierarchyEntry,
 )
 from .errors import ApiError
 from .helpers import (
@@ -98,6 +104,13 @@ __all__ = [
     "ValidatedAddressResultList",
     "ValidateAddressesResponse",
     "ValidationErrorItem",
+    # Extraction result types
+    "AddressFields",
+    "ValidatedAddressFields",
+    "AddressResultFields",
+    "GeoLocation",
+    "LocalizedName",
+    "NisHierarchyEntry",
     # Errors
     "ApiError",
     # Helpers

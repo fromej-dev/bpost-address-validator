@@ -21,6 +21,13 @@ from .models import (
     ValidatedAddressResult,
     ValidateAddressesResponse,
     ServicePointResultItem,
+    NisCodeInfo,
+    AddressFields,
+    ValidatedAddressFields,
+    AddressResultFields,
+    GeoLocation,
+    LocalizedName,
+    NisHierarchyEntry,
 )
 
 
@@ -305,7 +312,7 @@ def create_batch_request(
 # ---------------------------------------------------------------------------
 
 
-def extract_address_fields(postal_address: Optional[PostalAddress]) -> Dict[str, Optional[str]]:
+def extract_address_fields(postal_address: Optional[PostalAddress]) -> AddressFields:
     """Extract flat address fields from a PostalAddress.
 
     Handles both response-style (flattened) and request-style (nested)
@@ -315,30 +322,26 @@ def extract_address_fields(postal_address: Optional[PostalAddress]) -> Dict[str,
         postal_address: A PostalAddress from a validated result or request
 
     Returns:
-        Dictionary with keys matching the ``create_structured_address`` parameters:
-        ``street_name``, ``street_number``, ``box_number``, ``postal_code``,
-        ``municipality_name``, ``country_name``, ``delivery_service_qualifier``.
-        Missing values are ``None``.
+        AddressFields with attributes matching the ``create_structured_address``
+        parameters. Missing values are ``None``.
 
     Example:
         >>> result = client.validate_address_simple(...)
         >>> addr = result.first_result.first_validated_address
         >>> fields = extract_address_fields(addr.postal_address)
-        >>> fields["street_name"]
+        >>> fields.street_name
         'Muntstraat'
     """
-    fields: Dict[str, Optional[str]] = {
-        "street_name": None,
-        "street_number": None,
-        "box_number": None,
-        "postal_code": None,
-        "municipality_name": None,
-        "country_name": None,
-        "delivery_service_qualifier": None,
-    }
-
     if postal_address is None:
-        return fields
+        return AddressFields()
+
+    street_name = None
+    street_number = None
+    box_number = None
+    country_name = None
+    postal_code = None
+    municipality_name = None
+    delivery_service_qualifier = None
 
     # Resolve the structured delivery point — prefer the response-style
     # flattened field, fall back to the nested request-style wrapper.
@@ -347,14 +350,14 @@ def extract_address_fields(postal_address: Optional[PostalAddress]) -> Dict[str,
         sdpl = postal_address.delivery_point_location.structured_delivery_point_location
 
     if sdpl is not None:
-        fields["street_name"] = sdpl.street_name
-        fields["street_number"] = sdpl.street_number
-        fields["box_number"] = sdpl.box_number
-        fields["country_name"] = sdpl.country_name
+        street_name = sdpl.street_name
+        street_number = sdpl.street_number
+        box_number = sdpl.box_number
+        country_name = sdpl.country_name
 
     # Top-level country_name on PostalAddress takes precedence if set.
     if postal_address.country_name is not None:
-        fields["country_name"] = postal_address.country_name
+        country_name = postal_address.country_name
 
     # Resolve postal code / municipality.
     spcm = postal_address.structured_postal_code_municipality
@@ -362,74 +365,94 @@ def extract_address_fields(postal_address: Optional[PostalAddress]) -> Dict[str,
         spcm = postal_address.postal_code_municipality.structured_postal_code_municipality
 
     if spcm is not None:
-        fields["postal_code"] = spcm.postal_code
-        fields["municipality_name"] = spcm.municipality_name
-        fields["delivery_service_qualifier"] = spcm.delivery_service_qualifier
+        postal_code = spcm.postal_code
+        municipality_name = spcm.municipality_name
+        delivery_service_qualifier = spcm.delivery_service_qualifier
 
-    return fields
+    return AddressFields(
+        street_name=street_name,
+        street_number=street_number,
+        box_number=box_number,
+        postal_code=postal_code,
+        municipality_name=municipality_name,
+        country_name=country_name,
+        delivery_service_qualifier=delivery_service_qualifier,
+    )
 
 
 def extract_from_validated_address(
     validated_address: Optional[ValidatedAddress],
-) -> Dict[str, Optional[str]]:
+) -> ValidatedAddressFields:
     """Extract flat address fields from a ValidatedAddress.
 
-    Returns the same keys as ``extract_address_fields`` plus ``score`` and
+    Returns the same attributes as ``AddressFields`` plus ``score`` and
     ``address_language``.
 
     Args:
         validated_address: A ValidatedAddress from a validation result
 
     Returns:
-        Dictionary with address fields, ``score``, and ``address_language``.
+        ValidatedAddressFields with address data and validation metadata.
 
     Example:
         >>> addr = result.first_result.first_validated_address
         >>> info = extract_from_validated_address(addr)
-        >>> info["postal_code"], info["score"]
+        >>> info.postal_code, info.score
         ('1000', 'perfect')
     """
     if validated_address is None:
-        fields = extract_address_fields(None)
-        fields["score"] = None
-        fields["address_language"] = None
-        return fields
+        return ValidatedAddressFields()
 
-    fields = extract_address_fields(validated_address.postal_address)
-    fields["score"] = validated_address.score
-    fields["address_language"] = validated_address.address_language
-    return fields
+    base = extract_address_fields(validated_address.postal_address)
+    return ValidatedAddressFields(
+        street_name=base.street_name,
+        street_number=base.street_number,
+        box_number=base.box_number,
+        postal_code=base.postal_code,
+        municipality_name=base.municipality_name,
+        country_name=base.country_name,
+        delivery_service_qualifier=base.delivery_service_qualifier,
+        score=validated_address.score,
+        address_language=validated_address.address_language,
+    )
 
 
 def extract_from_result(
     result: Optional[ValidatedAddressResult],
-) -> Dict[str, Optional[str]]:
+) -> AddressResultFields:
     """Extract flat address fields from a ValidatedAddressResult.
 
-    Uses the first (best-scoring) validated address. Returns the same keys
-    as ``extract_from_validated_address`` plus ``id``.
+    Uses the first (best-scoring) validated address. Returns the same
+    attributes as ``ValidatedAddressFields`` plus ``id``.
 
     Args:
         result: A ValidatedAddressResult from the API response
 
     Returns:
-        Dictionary with address fields, ``score``, ``address_language``,
-        and ``id``.
+        AddressResultFields with address data, validation metadata, and id.
 
     Example:
         >>> response = client.validate_address_simple(...)
         >>> info = extract_from_result(response.first_result)
-        >>> info["street_name"], info["id"]
+        >>> info.street_name, info.id
         ('Muntstraat', '1')
     """
     if result is None:
-        fields = extract_from_validated_address(None)
-        fields["id"] = None
-        return fields
+        return AddressResultFields()
 
-    fields = extract_from_validated_address(result.first_validated_address)
-    fields["id"] = result.id
-    return fields
+    base = extract_from_validated_address(result.first_validated_address)
+    return AddressResultFields(
+        street_name=base.street_name,
+        street_number=base.street_number,
+        box_number=base.box_number,
+        postal_code=base.postal_code,
+        municipality_name=base.municipality_name,
+        country_name=base.country_name,
+        delivery_service_qualifier=base.delivery_service_qualifier,
+        score=base.score,
+        address_language=base.address_language,
+        id=result.id,
+    )
 
 
 def extract_label_lines(validated_address: Optional[ValidatedAddress]) -> List[str]:
@@ -477,7 +500,7 @@ def extract_label_lines(validated_address: Optional[ValidatedAddress]) -> List[s
 
 def extract_all_results(
     response: Optional[ValidateAddressesResponse],
-) -> List[Dict[str, Optional[str]]]:
+) -> List[AddressResultFields]:
     """Extract flat address fields from every result in a response.
 
     Convenience wrapper around ``extract_from_result`` for batch responses.
@@ -486,13 +509,12 @@ def extract_all_results(
         response: The full ValidateAddressesResponse from the API
 
     Returns:
-        List of dictionaries, one per result, with the same keys as
-        ``extract_from_result``.
+        List of AddressResultFields, one per result.
 
     Example:
         >>> response = client.validate_addresses(batch_request)
         >>> for addr in extract_all_results(response):
-        ...     print(addr["postal_code"], addr["street_name"])
+        ...     print(addr.postal_code, addr.street_name)
     """
     if response is None:
         return []
@@ -502,7 +524,7 @@ def extract_all_results(
 
 def extract_geo_location(
     validated_address: Optional[ValidatedAddress],
-) -> Dict[str, Optional[str]]:
+) -> GeoLocation:
     """Extract geo-location coordinates from a ValidatedAddress.
 
     Available when ``include_default_geo_location`` was enabled during
@@ -512,34 +534,32 @@ def extract_geo_location(
         validated_address: A ValidatedAddress that may contain geo data
 
     Returns:
-        Dictionary with ``latitude`` and ``longitude`` as strings, or
+        GeoLocation with ``latitude`` and ``longitude`` as strings, or
         ``None`` if unavailable.
 
     Example:
         >>> addr = result.first_result.first_validated_address
         >>> geo = extract_geo_location(addr)
-        >>> geo["latitude"], geo["longitude"]
+        >>> geo.latitude, geo.longitude
         ('51.207968', '4.227349')
     """
-    empty: Dict[str, Optional[str]] = {"latitude": None, "longitude": None}
-
     if validated_address is None or validated_address.service_point_detail is None:
-        return empty
+        return GeoLocation()
 
     geo_info = validated_address.service_point_detail.geographical_location_info
     if geo_info is None or geo_info.geographical_location is None:
-        return empty
+        return GeoLocation()
 
     geo = geo_info.geographical_location
-    return {
-        "latitude": geo.latitude.value if geo.latitude else None,
-        "longitude": geo.longitude.value if geo.longitude else None,
-    }
+    return GeoLocation(
+        latitude=geo.latitude.value if geo.latitude else None,
+        longitude=geo.longitude.value if geo.longitude else None,
+    )
 
 
 def extract_nis_code(
     validated_address: Optional[ValidatedAddress],
-) -> Dict[str, Optional[str]]:
+) -> NisCodeInfo:
     """Extract the NIS code from a ValidatedAddress.
 
     Available when ``include_nis_code`` was enabled during validation.
@@ -548,27 +568,24 @@ def extract_nis_code(
         validated_address: A ValidatedAddress that may contain NIS data
 
     Returns:
-        Dictionary with ``level`` and ``value``, or ``None`` values if
+        NisCodeInfo with ``level`` and ``value``, or ``None`` values if
         unavailable.
 
     Example:
         >>> addr = result.first_result.first_validated_address
         >>> nis = extract_nis_code(addr)
-        >>> nis["level"], nis["value"]
+        >>> nis.level, nis.value
         ('9', '46003A242')
     """
     if validated_address is None or validated_address.nis_code is None:
-        return {"level": None, "value": None}
+        return NisCodeInfo()
 
-    return {
-        "level": validated_address.nis_code.level,
-        "value": validated_address.nis_code.value,
-    }
+    return validated_address.nis_code
 
 
 def extract_nis_hierarchy(
     validated_address: Optional[ValidatedAddress],
-) -> List[Dict[str, Any]]:
+) -> List[NisHierarchyEntry]:
     """Extract the NIS hierarchy from a ValidatedAddress.
 
     Available when ``include_nis_hierarchy`` was enabled during validation.
@@ -579,15 +596,14 @@ def extract_nis_hierarchy(
         validated_address: A ValidatedAddress that may contain NIS hierarchy
 
     Returns:
-        List of dictionaries, each with ``level``, ``value``, and ``names``
-        (a list of ``{"body": ..., "locale": ...}`` items).
+        List of NisHierarchyEntry, each with ``level``, ``value``, and
+        ``names`` (a tuple of LocalizedName).
 
     Example:
         >>> addr = result.first_result.first_validated_address
         >>> for entry in extract_nis_hierarchy(addr):
-        ...     print(entry["level"], entry["value"], entry["names"])
-        9 46003A242 [{'body': 'HEIDE', 'locale': 'nl'}]
-        6 46003A [{'body': 'BEVEREN', 'locale': 'nl'}]
+        ...     print(entry.level, entry.value, entry.names)
+        9 46003A242 (LocalizedName(body='HEIDE', locale='nl'),)
     """
     if (
         validated_address is None
@@ -596,16 +612,16 @@ def extract_nis_hierarchy(
     ):
         return []
 
-    entries: List[Dict[str, Any]] = []
+    entries: List[NisHierarchyEntry] = []
     for item in validated_address.nis_hierarchy.nis_hierarchy_result:
-        entry: Dict[str, Any] = {
-            "level": item.nis_code.level if item.nis_code else None,
-            "value": item.nis_code.value if item.nis_code else None,
-            "names": [
-                {"body": n.body, "locale": n.locale}
+        entry = NisHierarchyEntry(
+            level=item.nis_code.level if item.nis_code else None,
+            value=item.nis_code.value if item.nis_code else None,
+            names=tuple(
+                LocalizedName(body=n.body, locale=n.locale)
                 for n in item.nis_name
-            ],
-        }
+            ),
+        )
         entries.append(entry)
 
     return entries

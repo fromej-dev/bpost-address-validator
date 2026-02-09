@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -415,3 +416,63 @@ class ValidateAddressesResponse(_FlexibleModel):
         """
         results = self.results
         return results[0] if results else None
+
+
+# ----
+# Extraction result types
+# Frozen dataclasses used as typed return values from extraction helpers.
+# These provide attribute access and IDE autocompletion for extracted data.
+# ----
+
+
+@dataclass(frozen=True)
+class AddressFields:
+    """Flat address fields extracted from a PostalAddress."""
+
+    street_name: Optional[str] = None
+    street_number: Optional[str] = None
+    box_number: Optional[str] = None
+    postal_code: Optional[str] = None
+    municipality_name: Optional[str] = None
+    country_name: Optional[str] = None
+    delivery_service_qualifier: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ValidatedAddressFields(AddressFields):
+    """Address fields with validation metadata from a ValidatedAddress."""
+
+    score: Optional[str] = None
+    address_language: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class AddressResultFields(ValidatedAddressFields):
+    """Address fields from a ValidatedAddressResult (includes id)."""
+
+    id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class GeoLocation:
+    """Geographic coordinates extracted from a ValidatedAddress."""
+
+    latitude: Optional[str] = None
+    longitude: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class LocalizedName:
+    """A name with its locale."""
+
+    body: Optional[str] = None
+    locale: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class NisHierarchyEntry:
+    """A single entry in the NIS administrative hierarchy."""
+
+    level: Optional[str] = None
+    value: Optional[str] = None
+    names: tuple[LocalizedName, ...] = ()
